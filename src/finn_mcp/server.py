@@ -5,6 +5,7 @@ import sys
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from . import config, http_client
 from .backend.base import ListingNotFound
@@ -173,13 +174,34 @@ async def check_saved_search(name: str) -> list[SearchResult] | dict[str, Any]:
     return new
 
 
+def configure_http() -> None:
+    """Apply FINN_MCP_HOST / FINN_MCP_PORT and Host validation to ``mcp``.
+
+    The endpoint is ``/mcp``. Sessions are stateless so the server can be
+    restarted or redeployed behind a proxy without clients holding stale
+    session ids.
+    """
+    mcp.settings.host = config.http_host()
+    mcp.settings.port = config.http_port()
+    mcp.settings.streamable_http_path = "/mcp"
+    mcp.settings.stateless_http = True
+    mcp.settings.transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=config.allowed_hosts(),
+        allowed_origins=config.allowed_origins(),
+    )
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
         stream=sys.stderr,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
-    mcp.run()
+    transport = config.transport()
+    if transport == "streamable-http":
+        configure_http()
+    mcp.run(transport=transport)
 
 
 if __name__ == "__main__":
