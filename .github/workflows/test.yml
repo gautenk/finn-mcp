@@ -28,3 +28,24 @@ jobs:
 
       - name: Run tests
         run: uv run pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t finn-mcp .
+
+      - name: Smoke module is available
+        run: docker run --rm finn-mcp python -m finn_mcp.smoke --help
+
+      - name: Container answers initialize on /mcp
+        run: |
+          docker run -d --name finn-mcp -p 8000:8000 finn-mcp
+          for i in $(seq 1 20); do
+            curl -s -o /dev/null http://localhost:8000/mcp && break
+            sleep 1
+          done
+          curl -sf -X POST http://localhost:8000/mcp             -H 'Host: finn.gekkomedia.no'             -H 'Content-Type: application/json'             -H 'Accept: application/json, text/event-stream'             -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}'             | grep -q '"finn-mcp"'
+          docker logs finn-mcp

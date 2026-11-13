@@ -6,7 +6,7 @@ online classifieds marketplace — to Claude across four verticals:
 - **BAP / Torget** — used goods
 - **Real estate** — homes for sale and rentals
 - **Cars** — used (new cars are only available via the official API)
-- **Jobs** — full-time listings
+- **Jobs** — full-time and part-time listings (`job_type`)
 
 ## Tools
 
@@ -18,6 +18,10 @@ online classifieds marketplace — to Claude across four verticals:
 | `list_saved_searches` | List all saved searches. |
 | `delete_saved_search` | Remove a saved search. |
 | `check_saved_search` | Run a saved search and return only hits that are new since the last check. |
+
+`search_finn` and `save_search` take `job_type` for the `jobs` vertical:
+`"fulltime"`, `"parttime"` or `"all"` (default). `check_saved_search` reuses
+the stored value.
 
 ## Install & run (recommended)
 
@@ -46,6 +50,37 @@ Or add to your `.mcp.json` (or Claude Desktop's `claude_desktop_config.json`):
   }
 }
 ```
+
+## HTTP transport and Docker
+
+The server speaks stdio by default. Set `FINN_MCP_TRANSPORT=streamable-http`
+to serve native streamable HTTP at `/mcp` instead:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `FINN_MCP_TRANSPORT` | `stdio` | `stdio` or `streamable-http` |
+| `FINN_MCP_HOST` | `127.0.0.1` | Bind address |
+| `FINN_MCP_PORT` | `8000` | Bind port |
+| `FINN_MCP_ALLOWED_HOSTS` | – | Extra comma-separated `Host` values to accept |
+| `FINN_MCP_ALLOWED_ORIGINS` | – | Extra comma-separated `Origin` values to accept |
+
+`Host` headers are validated (DNS-rebinding protection). `finn.gekkomedia.no`,
+`nginx`, `finn-mcp:8000` and localhost are accepted out of the box.
+
+```bash
+docker build -t finn-mcp .
+docker run --rm -p 8000:8000 -v finn-data:/data finn-mcp
+```
+
+The image runs the HTTP transport on `0.0.0.0:8000` and stores the cache and
+saved searches under `XDG_DATA_HOME=/data`. Check a running server with:
+
+```bash
+python -m finn_mcp.smoke --url http://localhost:8000/mcp [--host finn.gekkomedia.no]
+```
+
+It runs `initialize`, `tools/list` and one part-time job search in Oslo
+(one request to finn.no) and exits non-zero on failure.
 
 ## Data access
 

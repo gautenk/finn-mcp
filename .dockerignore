@@ -1,0 +1,9 @@
+.git
+.github
+.venv
+.python-version
+__pycache__/
+*.py[oc]
+dist/
+build/
+tests/
