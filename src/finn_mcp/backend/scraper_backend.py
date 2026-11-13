@@ -4,7 +4,7 @@ import logging
 
 from .. import http_client
 from ..cache import Cache
-from ..models import ALL_VERTICALS, Listing, SearchResult, Vertical
+from ..models import ALL_JOB_TYPES, ALL_VERTICALS, JobType, Listing, SearchResult, Vertical
 from ..scraper import get_scraper
 from .base import FinnBackend, ListingNotFound
 
@@ -32,10 +32,19 @@ class ScraperBackend(FinnBackend):
         query: str,
         page: int = 1,
         filters: dict[str, str] | None = None,
+        job_type: JobType = "all",
     ) -> list[SearchResult]:
         if vertical not in ALL_VERTICALS:
             raise ValueError(f"unknown vertical: {vertical}")
+        if job_type not in ALL_JOB_TYPES:
+            raise ValueError(f"unknown job_type: {job_type!r}")
         scraper = get_scraper(vertical)
+        if vertical == "jobs":
+            return await scraper.search(
+                query=query, page=page, filters=filters, job_type=job_type
+            )
+        if job_type != "all":
+            raise ValueError("job_type is only supported for vertical 'jobs'")
         return await scraper.search(query=query, page=page, filters=filters)
 
     async def get_listing(

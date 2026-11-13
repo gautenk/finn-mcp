@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..models import Listing, SearchResult, Vertical
+from ..models import JobType, Listing, SearchResult, Vertical
 from .base import FinnBackend
 
 
@@ -31,6 +31,7 @@ class OfficialApiBackend(FinnBackend):
         query: str,
         page: int = 1,
         filters: dict[str, str] | None = None,
+        job_type: JobType = "all",
     ) -> list[SearchResult]:
         raise NotImplementedError(
             "OfficialApiBackend is a stub — partner credentials and endpoint "

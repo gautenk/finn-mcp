@@ -6,9 +6,32 @@ from typing import Any
 
 from selectolax.parser import HTMLParser
 
-from ..models import Listing
+from .. import http_client
+from ..models import JobType, Listing, SearchResult
 from .base import VerticalScraper, _clean, now_utc
 from .jsonld import extract_jsonld, find_by_type
+
+# The legacy /job/fulltime/ and /job/parttime/ paths on finn.no now redirect
+# to /job/search, where full-time vs part-time is the ``extent`` filter.
+JOB_TYPE_EXTENT: dict[str, str] = {
+    "fulltime": "3947",
+    "parttime": "3942",
+}
+
+_EMPLOYMENT_TYPE_JOB_TYPE = {
+    "FULL_TIME": "fulltime",
+    "PART_TIME": "parttime",
+}
+
+
+def _job_type_from_employment(emp_type: Any) -> str | None:
+    values = emp_type if isinstance(emp_type, list) else [emp_type]
+    found = {
+        _EMPLOYMENT_TYPE_JOB_TYPE[str(v).upper()]
+        for v in values
+        if str(v).upper() in _EMPLOYMENT_TYPE_JOB_TYPE
+    }
+    return found.pop() if len(found) == 1 else None
 
 
 class JobsScraper(VerticalScraper):
@@ -17,14 +40,37 @@ class JobsScraper(VerticalScraper):
     finnkode_re = re.compile(r"/job/ad/(\d+)")
 
     def search_url(
-        self, query: str, page: int, filters: dict[str, str] | None
+        self,
+        query: str,
+        page: int,
+        filters: dict[str, str] | None,
+        job_type: JobType = "all",
     ) -> tuple[str, dict[str, str]]:
         params: dict[str, str] = {"q": query} if query else {}
         if page > 1:
             params["page"] = str(page)
         if filters:
             params.update(filters)
+        if job_type != "all":
+            if job_type not in JOB_TYPE_EXTENT:
+                raise ValueError(
+                    f"unknown job_type: {job_type!r}; "
+                    "expected 'fulltime', 'parttime' or 'all'"
+                )
+            # An explicit job_type wins over any ``extent`` in filters.
+            params["extent"] = JOB_TYPE_EXTENT[job_type]
         return "https://www.finn.no/job/search", params
+
+    async def search(  # type: ignore[override]
+        self,
+        query: str,
+        page: int = 1,
+        filters: dict[str, str] | None = None,
+        job_type: JobType = "all",
+    ) -> list[SearchResult]:
+        url, params = self.search_url(query, page, filters, job_type)
+        html = await http_client.fetch(url, params=params)
+        return self.parse_search_cards(html)
 
     def detail_url(self, finnkode: str) -> str:
         return f"https://www.finn.no/job/ad/{finnkode}"
@@ -56,6 +102,9 @@ class JobsScraper(VerticalScraper):
             emp_type = posting.get("employmentType")
             if emp_type:
                 attributes["employment_type"] = emp_type
+                job_type = _job_type_from_employment(emp_type)
+                if job_type:
+                    attributes["job_type"] = job_type
             valid_through = posting.get("validThrough")
             if valid_through:
                 attributes["deadline"] = valid_through

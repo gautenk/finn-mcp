@@ -9,7 +9,7 @@ from mcp.server.fastmcp import FastMCP
 from . import config, http_client
 from .backend.base import ListingNotFound
 from .cache import Cache
-from .models import Listing, SavedSearch, SearchResult, Vertical
+from .models import JobType, Listing, SavedSearch, SearchResult, Vertical
 from .scraper.base import now_utc
 
 log = logging.getLogger("finn_mcp")
@@ -30,6 +30,7 @@ async def search_finn(
     query: str,
     page: int = 1,
     filters: dict[str, str] | None = None,
+    job_type: JobType = "all",
 ) -> list[SearchResult] | dict[str, Any]:
     """Search finn.no within a vertical.
 
@@ -41,11 +42,18 @@ async def search_finn(
     URL-query parameters understood by finn.no (e.g. ``{"price_to":"300000"}``
     for cars, ``{"location":"1.20001.20061"}`` for Oslo).
 
+    ``job_type`` only applies to ``vertical="jobs"``: ``fulltime`` (heltid),
+    ``parttime`` (deltid) or ``all`` (default, both).
+
     Returns up to ~50 ``SearchResult`` entries. Fewer if finn.no returned
     fewer matches; an empty list is a valid result.
     """
     try:
-        return await _backend().search(vertical, query, page=page, filters=filters)
+        return await _backend().search(
+            vertical, query, page=page, filters=filters, job_type=job_type
+        )
+    except ValueError as exc:
+        return {"error": "invalid_argument", "message": str(exc)}
     except NotImplementedError as exc:
         return {"error": "not_supported", "message": str(exc)}
     except http_client.RateLimitedError as exc:
@@ -92,13 +100,24 @@ async def save_search(
     vertical: Vertical,
     query: str,
     filters: dict[str, str] | None = None,
-) -> SavedSearch:
-    """Persist a named search for repeated monitoring via ``check_saved_search``."""
+    job_type: JobType = "all",
+) -> SavedSearch | dict[str, Any]:
+    """Persist a named search for repeated monitoring via ``check_saved_search``.
+
+    ``job_type`` (``fulltime`` | ``parttime`` | ``all``) is stored with the
+    search and only applies to ``vertical="jobs"``.
+    """
+    if job_type != "all" and vertical != "jobs":
+        return {
+            "error": "invalid_argument",
+            "message": "job_type is only supported for vertical 'jobs'",
+        }
     saved = SavedSearch(
         name=name,
         vertical=vertical,
         query=query,
         filters=filters or {},
+        job_type=job_type,
         last_checked_at=None,
         last_finnkodes=[],
     )
@@ -131,8 +150,14 @@ async def check_saved_search(name: str) -> list[SearchResult] | dict[str, Any]:
 
     try:
         results = await _backend().search(
-            saved.vertical, saved.query, page=1, filters=saved.filters
+            saved.vertical,
+            saved.query,
+            page=1,
+            filters=saved.filters,
+            job_type=saved.job_type,
         )
+    except ValueError as exc:
+        return {"error": "invalid_argument", "message": str(exc)}
     except NotImplementedError as exc:
         return {"error": "not_supported", "message": str(exc)}
     except http_client.RateLimitedError as exc:

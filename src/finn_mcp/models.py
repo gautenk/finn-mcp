@@ -24,6 +24,11 @@ ALL_VERTICALS: tuple[Vertical, ...] = (
 )
 
 
+JobType = Literal["fulltime", "parttime", "all"]
+
+ALL_JOB_TYPES: tuple[JobType, ...] = ("fulltime", "parttime", "all")
+
+
 class SearchResult(BaseModel):
     finnkode: str
     vertical: Vertical
@@ -57,5 +62,6 @@ class SavedSearch(BaseModel):
     vertical: Vertical
     query: str
     filters: dict[str, str] = Field(default_factory=dict)
+    job_type: JobType = "all"
     last_checked_at: datetime | None = None
     last_finnkodes: list[str] = Field(default_factory=list)

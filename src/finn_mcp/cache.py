@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS saved_searches (
   vertical            TEXT NOT NULL,
   query               TEXT NOT NULL,
   filters_json        TEXT NOT NULL DEFAULT '{}',
+  job_type            TEXT NOT NULL DEFAULT 'all',
   last_checked_at     INTEGER,
   last_finnkodes_json TEXT NOT NULL DEFAULT '[]'
 );
@@ -40,6 +41,12 @@ def _connect(db_path: Path | str) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    # Databases created before job_type existed lack the column.
+    columns = {r["name"] for r in conn.execute("PRAGMA table_info(saved_searches)")}
+    if "job_type" not in columns:
+        conn.execute(
+            "ALTER TABLE saved_searches ADD COLUMN job_type TEXT NOT NULL DEFAULT 'all'"
+        )
     conn.commit()
     return conn
 
@@ -115,13 +122,14 @@ class Cache:
         with self._conn() as c:
             c.execute(
                 "INSERT OR REPLACE INTO saved_searches "
-                "(name, vertical, query, filters_json, last_checked_at, last_finnkodes_json) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "(name, vertical, query, filters_json, job_type, last_checked_at, last_finnkodes_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     s.name,
                     s.vertical,
                     s.query,
                     json.dumps(s.filters),
+                    s.job_type,
                     int(s.last_checked_at.timestamp()) if s.last_checked_at else None,
                     json.dumps(s.last_finnkodes),
                 ),
@@ -131,7 +139,7 @@ class Cache:
     def _get_search(self, name: str) -> SavedSearch | None:
         with self._conn() as c:
             row = c.execute(
-                "SELECT name, vertical, query, filters_json, last_checked_at, last_finnkodes_json "
+                "SELECT name, vertical, query, filters_json, job_type, last_checked_at, last_finnkodes_json "
                 "FROM saved_searches WHERE name = ?",
                 (name,),
             ).fetchone()
@@ -142,7 +150,7 @@ class Cache:
     def _list_searches(self) -> list[SavedSearch]:
         with self._conn() as c:
             rows = c.execute(
-                "SELECT name, vertical, query, filters_json, last_checked_at, last_finnkodes_json "
+                "SELECT name, vertical, query, filters_json, job_type, last_checked_at, last_finnkodes_json "
                 "FROM saved_searches ORDER BY name"
             ).fetchall()
         return [_row_to_saved_search(r) for r in rows]
@@ -189,6 +197,7 @@ def _row_to_saved_search(row: sqlite3.Row) -> SavedSearch:
         vertical=row["vertical"],
         query=row["query"],
         filters=json.loads(row["filters_json"] or "{}"),
+        job_type=row["job_type"] or "all",
         last_checked_at=(
             datetime.fromtimestamp(checked, tz=timezone.utc) if checked else None
         ),

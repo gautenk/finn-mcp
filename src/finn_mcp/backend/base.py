@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from ..models import Listing, SearchResult, Vertical
+from ..models import JobType, Listing, SearchResult, Vertical
 
 
 class ListingNotFound(Exception):
@@ -27,6 +27,7 @@ class FinnBackend(ABC):
         query: str,
         page: int = 1,
         filters: dict[str, str] | None = None,
+        job_type: JobType = "all",
     ) -> list[SearchResult]:
         ...
 

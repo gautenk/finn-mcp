@@ -1,3 +1,3 @@
-from .models import Listing, SavedSearch, SearchResult, Vertical
+from .models import JobType, Listing, SavedSearch, SearchResult, Vertical
 
-__all__ = ["Listing", "SavedSearch", "SearchResult", "Vertical"]
+__all__ = ["JobType", "Listing", "SavedSearch", "SearchResult", "Vertical"]
