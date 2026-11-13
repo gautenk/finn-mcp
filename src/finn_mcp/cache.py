@@ -44,9 +44,14 @@ def _connect(db_path: Path | str) -> sqlite3.Connection:
     # Databases created before job_type existed lack the column.
     columns = {r["name"] for r in conn.execute("PRAGMA table_info(saved_searches)")}
     if "job_type" not in columns:
-        conn.execute(
-            "ALTER TABLE saved_searches ADD COLUMN job_type TEXT NOT NULL DEFAULT 'all'"
-        )
+        try:
+            conn.execute(
+                "ALTER TABLE saved_searches ADD COLUMN job_type TEXT NOT NULL DEFAULT 'all'"
+            )
+        except sqlite3.OperationalError as exc:
+            # Another thread's connection added the column first.
+            if "duplicate column name" not in str(exc):
+                raise
     conn.commit()
     return conn
 
