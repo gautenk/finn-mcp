@@ -115,10 +115,10 @@ class VerticalScraper(ABC):
             if finnkode in seen_finnkodes:
                 continue
             article = walk_to_article(a)
-            if article is None or id(article) in seen_articles:
+            if article is None or article.mem_id in seen_articles:
                 continue
             seen_finnkodes.add(finnkode)
-            seen_articles.add(id(article))
+            seen_articles.add(article.mem_id)
             result = self._parse_card(finnkode, href, article)
             if result is not None:
                 results.append(result)

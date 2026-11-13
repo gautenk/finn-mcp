@@ -13,4 +13,4 @@ def fixtures() -> Path:
 
 
 def read_fixture(name: str) -> str:
-    return (FIXTURE_DIR / name).read_text()
+    return (FIXTURE_DIR / name).read_text(encoding="utf-8")
