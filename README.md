@@ -23,6 +23,13 @@ online classifieds marketplace — to Claude across four verticals:
 `"fulltime"`, `"parttime"` or `"all"` (default). `check_saved_search` reuses
 the stored value.
 
+Search results carry what the result card shows, so a full listing fetch is
+only needed for the ad body: `location` for every vertical, plus `extra`
+fields such as `employer`, `deadline` and `positions` (jobs), `trade_type` and
+`seller_type` (Torget), `seller_name`, `transmission` and `warranty_months`
+(cars), and `total_price_nok`, `common_cost_monthly_nok`, `ownership_type`,
+`broker` and `viewing` (real estate).
+
 ## Install & run (recommended)
 
 Requires [uv](https://docs.astral.sh/uv/). Then use `uvx` to run the server
