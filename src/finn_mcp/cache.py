@@ -115,6 +115,12 @@ class Cache:
             return None
         return Listing.model_validate_json(row["parsed_json"])
 
+    async def get_listing_row(
+        self, finnkode: str, max_age_seconds: int = config.LISTING_TTL_SECONDS
+    ) -> dict[str, Any] | None:
+        """Cached row (vertical, fetched_at, raw_html, parsed_json) if still fresh."""
+        return await asyncio.to_thread(self._get_listing, finnkode, max_age_seconds)
+
     async def vertical_hint(self, finnkode: str) -> Vertical | None:
         return await asyncio.to_thread(self._get_vertical_hint, finnkode)
 

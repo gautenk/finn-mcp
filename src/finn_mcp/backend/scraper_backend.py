@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
+from typing import Any
 
 from .. import http_client
 from ..cache import Cache
@@ -58,9 +60,14 @@ class ScraperBackend(FinnBackend):
         if vertical is None:
             vertical = await self.cache.vertical_hint(finnkode)
 
-        cached = await self.cache.get_listing(finnkode)
-        if cached is not None and (vertical is None or cached.vertical == vertical):
-            return cached
+        row = await self.cache.get_listing_row(finnkode)
+        if row is not None and (vertical is None or row["vertical"] == vertical):
+            cached = self._listing_from_row(finnkode, row)
+            # A cached page that yields no ad text is treated as a miss, so a
+            # bad or half-parsed fetch is not served for the whole TTL.
+            if cached is not None and cached.description:
+                return cached
+            vertical = row["vertical"]
 
         if vertical is not None:
             return await self._fetch_and_cache(finnkode, vertical)
@@ -72,6 +79,9 @@ class ScraperBackend(FinnBackend):
                 return await self._fetch_and_cache(finnkode, candidate)
             except http_client.NotFoundError:
                 continue
+            except (http_client.BlockedError, http_client.RateLimitedError):
+                # Probing the remaining verticals would only add requests.
+                raise
             except Exception as exc:  # network, parse, etc.
                 log.warning("probe %s failed for %s: %s", candidate, finnkode, exc)
                 last_exc = exc
@@ -79,6 +89,31 @@ class ScraperBackend(FinnBackend):
         if last_exc is not None:
             raise last_exc
         raise ListingNotFound(finnkode)
+
+    def _listing_from_row(self, finnkode: str, row: dict[str, Any]) -> Listing | None:
+        """Build a Listing from a cache row.
+
+        The stored page is parsed again with the current parser, so parser
+        fixes take effect without waiting for the cache to expire. Falls back
+        to the stored parse result when there is no page or parsing fails.
+        """
+        raw_html = row.get("raw_html")
+        if raw_html:
+            try:
+                listing = get_scraper(row["vertical"]).parse_detail(finnkode, raw_html)
+                return listing.model_copy(
+                    update={
+                        "fetched_at": datetime.fromtimestamp(
+                            row["fetched_at"], tz=timezone.utc
+                        )
+                    }
+                )
+            except Exception as exc:  # stale markup, parser bug
+                log.warning("re-parse of cached %s failed: %s", finnkode, exc)
+        try:
+            return Listing.model_validate_json(row["parsed_json"])
+        except ValueError:
+            return None
 
     async def _fetch_and_cache(self, finnkode: str, vertical: Vertical) -> Listing:
         scraper = get_scraper(vertical)

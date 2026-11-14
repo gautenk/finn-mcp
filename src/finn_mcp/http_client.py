@@ -19,6 +19,16 @@ class NotFoundError(Exception):
     pass
 
 
+class BlockedError(Exception):
+    """finn.no answered 403, i.e. its bot protection served a captcha page."""
+
+    def __init__(self, url: str):
+        super().__init__(
+            f"finn.no blocked the request with a captcha (HTTP 403): {url}"
+        )
+        self.url = url
+
+
 _client: httpx.AsyncClient | None = None
 _semaphore: asyncio.Semaphore | None = None
 
@@ -72,6 +82,8 @@ async def fetch(url: str, *, params: dict[str, Any] | None = None, polite: bool 
 
             if response.status_code == 404:
                 raise NotFoundError(url)
+            if response.status_code == 403:
+                raise BlockedError(url)
             if response.status_code == 429:
                 if attempt == 1:
                     await asyncio.sleep(30.0)

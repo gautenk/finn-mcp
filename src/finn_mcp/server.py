@@ -57,6 +57,8 @@ async def search_finn(
         return {"error": "invalid_argument", "message": str(exc)}
     except NotImplementedError as exc:
         return {"error": "not_supported", "message": str(exc)}
+    except http_client.BlockedError as exc:
+        return {"error": "blocked", "message": str(exc)}
     except http_client.RateLimitedError as exc:
         return {"error": "rate_limited", "retry_after": exc.retry_after}
     except Exception as exc:
@@ -81,6 +83,8 @@ async def get_listing(
         return {"error": "not_found", "finnkode": finnkode}
     except ListingNotFound:
         return {"error": "not_found", "finnkode": finnkode}
+    except http_client.BlockedError as exc:
+        return {"error": "blocked", "message": str(exc)}
     except http_client.RateLimitedError as exc:
         return {"error": "rate_limited", "retry_after": exc.retry_after}
     except NotImplementedError as exc:
@@ -161,6 +165,8 @@ async def check_saved_search(name: str) -> list[SearchResult] | dict[str, Any]:
         return {"error": "invalid_argument", "message": str(exc)}
     except NotImplementedError as exc:
         return {"error": "not_supported", "message": str(exc)}
+    except http_client.BlockedError as exc:
+        return {"error": "blocked", "message": str(exc)}
     except http_client.RateLimitedError as exc:
         return {"error": "rate_limited", "retry_after": exc.retry_after}
     except Exception as exc:
