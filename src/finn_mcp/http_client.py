@@ -64,6 +64,14 @@ async def close_client() -> None:
 
 
 async def fetch(url: str, *, params: dict[str, Any] | None = None, polite: bool = True) -> str:
+    text, _ = await fetch_with_url(url, params=params, polite=polite)
+    return text
+
+
+async def fetch_with_url(
+    url: str, *, params: dict[str, Any] | None = None, polite: bool = True
+) -> tuple[str, str]:
+    """Fetch ``url`` and return ``(body, final URL after redirects)``."""
     client = await get_client()
     sem = _get_semaphore()
     async with sem:
@@ -93,6 +101,6 @@ async def fetch(url: str, *, params: dict[str, Any] | None = None, polite: bool 
                 await asyncio.sleep(2.0 + random.uniform(0, 3.0))
                 continue
             response.raise_for_status()
-            return response.text
+            return response.text, str(response.url)
 
         raise RuntimeError(f"unreachable: exhausted retries for {url}")

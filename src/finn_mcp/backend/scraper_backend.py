@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 from .. import http_client
 from ..cache import Cache
@@ -12,14 +14,25 @@ from .base import FinnBackend, ListingNotFound
 
 log = logging.getLogger(__name__)
 
-# Probe order when the caller hasn't supplied a vertical. Roughly by popularity.
-_VERTICAL_PROBE_ORDER: tuple[Vertical, ...] = (
-    "cars_used",
-    "bap",
-    "homes",
-    "lettings",
-    "jobs",
+# Path prefixes of ad pages, as reached through finn.no/<finnkode>.
+_URL_VERTICALS: tuple[tuple[str, Vertical], ...] = (
+    ("/job/", "jobs"),
+    ("/recommerce/", "bap"),
+    ("/mobility/", "cars_used"),
+    ("/realestate/lettings", "lettings"),
+    ("/realestate/", "homes"),
 )
+
+
+def vertical_for_url(url: str) -> Vertical | None:
+    """Vertical of an ad page URL, or None for pages that are not ads."""
+    parts = urlsplit(url)
+    if not re.search(r"\d{6,}", parts.path + "?" + parts.query):
+        return None
+    for prefix, vertical in _URL_VERTICALS:
+        if parts.path.startswith(prefix):
+            return vertical
+    return None
 
 
 class ScraperBackend(FinnBackend):
@@ -70,25 +83,33 @@ class ScraperBackend(FinnBackend):
             vertical = row["vertical"]
 
         if vertical is not None:
-            return await self._fetch_and_cache(finnkode, vertical)
-
-        # No hint, no cache — probe each vertical until one returns 200.
-        last_exc: Exception | None = None
-        for candidate in _VERTICAL_PROBE_ORDER:
             try:
-                return await self._fetch_and_cache(finnkode, candidate)
+                return await self._fetch_and_cache(finnkode, vertical)
             except http_client.NotFoundError:
-                continue
-            except (http_client.BlockedError, http_client.RateLimitedError):
-                # Probing the remaining verticals would only add requests.
-                raise
-            except Exception as exc:  # network, parse, etc.
-                log.warning("probe %s failed for %s: %s", candidate, finnkode, exc)
-                last_exc = exc
-                continue
-        if last_exc is not None:
-            raise last_exc
-        raise ListingNotFound(finnkode)
+                # Wrong vertical, or an ad type with its own URL (external
+                # lettings, new-build projects): let finn.no route it.
+                pass
+        return await self._resolve_and_cache(finnkode)
+
+    async def _resolve_and_cache(self, finnkode: str) -> Listing:
+        """Fetch an ad through ``finn.no/<finnkode>``.
+
+        finn.no redirects that address to the ad's real URL whatever the
+        vertical, so one request both finds the vertical and gets the page.
+        """
+        try:
+            html, final_url = await http_client.fetch_with_url(
+                f"https://www.finn.no/{finnkode}"
+            )
+        except http_client.NotFoundError:
+            raise ListingNotFound(finnkode) from None
+        vertical = vertical_for_url(final_url)
+        if vertical is None:
+            raise ListingNotFound(finnkode)
+        listing = get_scraper(vertical).parse_detail(finnkode, html)
+        listing = listing.model_copy(update={"url": final_url})
+        await self.cache.put_listing(listing, html)
+        return listing
 
     def _listing_from_row(self, finnkode: str, row: dict[str, Any]) -> Listing | None:
         """Build a Listing from a cache row.

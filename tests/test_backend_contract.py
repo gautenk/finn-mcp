@@ -34,7 +34,16 @@ def stub_http(monkeypatch):
                 return read_fixture(fixture)
         raise http_client.NotFoundError(url)
 
+    async def fake_fetch_with_url(url, params=None, polite=True):
+        # finn.no/<finnkode> redirects to the ad's real URL.
+        finnkode = url.rsplit("/", 1)[-1]
+        for key in SCRAPER_FIXTURE_MAP:
+            if key.endswith(f"/{finnkode}"):
+                return await fake_fetch(key), key
+        raise http_client.NotFoundError(url)
+
     monkeypatch.setattr(http_client, "fetch", fake_fetch)
+    monkeypatch.setattr(http_client, "fetch_with_url", fake_fetch_with_url)
     return fake_fetch
 
 

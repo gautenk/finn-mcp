@@ -33,7 +33,18 @@ def fetches(monkeypatch):
             raise page
         return page
 
+    async def fake_fetch_with_url(url, params=None, polite=True):
+        state["calls"].append(url)
+        target = state["redirects"].get(url)
+        if target is None:
+            raise http_client.NotFoundError(url)
+        if isinstance(target, Exception):
+            raise target
+        return state["pages"][target], target
+
+    state["redirects"] = {}
     monkeypatch.setattr(http_client, "fetch", fake_fetch)
+    monkeypatch.setattr(http_client, "fetch_with_url", fake_fetch_with_url)
     return state
 
 
@@ -77,13 +88,76 @@ async def test_cached_page_is_parsed_with_current_parser(backend, fetches, monke
     assert fetches["calls"] == [JOB_URL]
 
 
-async def test_block_stops_vertical_probing(backend, fetches):
-    blocked = http_client.BlockedError("https://www.finn.no/mobility/item/1")
-    fetches["pages"]["https://www.finn.no/mobility/item/1"] = blocked
+async def test_unknown_vertical_is_resolved_in_one_request(backend, fetches):
+    fetches["pages"][JOB_URL] = read_fixture("jobs_parttime_ad.html")
+    fetches["redirects"][f"https://www.finn.no/{JOB}"] = JOB_URL
+    listing = await backend.get_listing(JOB)
+    assert listing.vertical == "jobs"
+    assert listing.url == JOB_URL
+    assert listing.description
+    assert fetches["calls"] == [f"https://www.finn.no/{JOB}"]
+    # Second lookup is served from the cache.
+    assert (await backend.get_listing(JOB)).description == listing.description
+    assert len(fetches["calls"]) == 1
+
+
+async def test_ad_with_its_own_url_is_found_when_the_vertical_url_404s(backend, fetches):
+    # External lettings live under /realestate/lettingsexternal/, so the
+    # lettings detail URL answers 404 and finn.no has to route the finnkode.
+    external = "https://www.finn.no/realestate/lettingsexternal/ad.html?finnkode=448510748"
+    fetches["pages"][external] = read_fixture("lettings_ad.html")
+    fetches["redirects"]["https://www.finn.no/448510748"] = external
+    listing = await backend.get_listing("448510748", vertical="lettings")
+    assert listing.vertical == "lettings"
+    assert listing.url == external
+    assert listing.price == 23_000
+    assert fetches["calls"] == [
+        "https://www.finn.no/realestate/lettings/ad.html?finnkode=448510748",
+        "https://www.finn.no/448510748",
+    ]
+
+
+async def test_missing_ad_is_not_found(backend, fetches):
+    from finn_mcp.backend.base import ListingNotFound
+
+    with pytest.raises(ListingNotFound):
+        await backend.get_listing("1")
+    assert fetches["calls"] == ["https://www.finn.no/1"]
+
+    # A redirect to something that is not an ad page is not a listing either.
+    fetches["pages"]["https://www.finn.no/"] = "<html></html>"
+    fetches["redirects"]["https://www.finn.no/2"] = "https://www.finn.no/"
+    with pytest.raises(ListingNotFound):
+        await backend.get_listing("2")
+
+
+async def test_block_is_reported_not_swallowed(backend, fetches):
+    fetches["redirects"]["https://www.finn.no/1"] = http_client.BlockedError(
+        "https://www.finn.no/1"
+    )
     with pytest.raises(http_client.BlockedError):
         await backend.get_listing("1")
-    # cars_used is probed first; the block must end the probe there.
-    assert fetches["calls"] == ["https://www.finn.no/mobility/item/1"]
+    assert fetches["calls"] == ["https://www.finn.no/1"]
+
+
+@pytest.mark.parametrize(
+    "url,vertical",
+    [
+        ("https://www.finn.no/job/ad/480588571", "jobs"),
+        ("https://www.finn.no/recommerce/forsale/item/480725550", "bap"),
+        ("https://www.finn.no/mobility/item/480518729", "cars_used"),
+        ("https://www.finn.no/realestate/homes/ad.html?finnkode=480700692", "homes"),
+        ("https://www.finn.no/realestate/project/ad.html?finnkode=480700692", "homes"),
+        ("https://www.finn.no/realestate/lettings/ad.html?finnkode=480917710", "lettings"),
+        ("https://www.finn.no/realestate/lettingsexternal/ad.html?finnkode=480917710", "lettings"),
+        ("https://www.finn.no/", None),
+        ("https://www.finn.no/job/search", None),
+    ],
+)
+def test_vertical_for_url(url, vertical):
+    from finn_mcp.backend.scraper_backend import vertical_for_url
+
+    assert vertical_for_url(url) == vertical
 
 
 async def test_fetch_raises_blocked_on_403(monkeypatch):

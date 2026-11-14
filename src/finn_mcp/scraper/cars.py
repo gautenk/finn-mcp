@@ -765,12 +765,40 @@ def _dom_description(tree: HTMLParser) -> str | None:
     return "\n\n".join(chunks) or None
 
 
+def _map_link_location(tree: HTMLParser) -> tuple[str | None, dict[str, Any]]:
+    """Place name from the map link under the gallery.
+
+    Pages without a 'Sted' section (Nov 2026 markup) only have this link:
+    its text is the place, its query string has coordinates and, for
+    private ads, the postal code.
+    """
+    extra: dict[str, Any] = {}
+    for a in tree.css('a[href*="finn.no/map"], a[href^="/map"]'):
+        place = _clean(a.text(separator=" ", strip=True))
+        if not place:
+            continue
+        qs = parse_qs(urlsplit(a.attributes.get("href") or "").query)
+        try:
+            lat, lon = qs.get("lat"), qs.get("lon") or qs.get("lng")
+            if lat and lon:
+                extra["latitude"], extra["longitude"] = float(lat[0]), float(lon[0])
+        except ValueError:
+            pass
+        postal = (qs.get("postalCode") or [""])[0].strip()
+        if postal.isdigit():
+            extra["postal_code"] = postal
+            extra["city"] = place
+            return f"{postal} {place}", extra
+        return place, extra
+    return None, extra
+
+
 def _dom_location(tree: HTMLParser) -> tuple[str | None, dict[str, Any]]:
     """Address under the 'Sted' heading plus what its map link encodes."""
     extra: dict[str, Any] = {}
     block = _heading_parent(tree, "Sted")
     if block is None:
-        return None, extra
+        return _map_link_location(tree)
     location: str | None = None
     for a in block.css("a"):
         text = _clean(a.text(separator=" ", strip=True))
@@ -783,6 +811,22 @@ def _dom_location(tree: HTMLParser) -> tuple[str | None, dict[str, Any]]:
                 extra["latitude"], extra["longitude"] = float(lat[0]), float(lon[0])
         except ValueError:
             pass
+    if location is None:
+        # Nov 2026 markup: the address is plain text after the heading.
+        parts = [
+            p
+            for p in (
+                _clean(s) for s in block.text(separator="\n", strip=True).split("\n")
+            )
+            if p and p.casefold() != "sted"
+        ]
+        if parts:
+            location = parts[0]
+    if "latitude" not in extra:
+        _, link_extra = _map_link_location(tree)
+        for key in ("latitude", "longitude"):
+            if key in link_extra:
+                extra[key] = link_extra[key]
     if location:
         m = _POSTAL_RE.search(location)
         if m:
@@ -1095,6 +1139,16 @@ class _CarsBase(VerticalScraper):
 
         # ----- seller -----
         seller = _dom_seller(tree, product)
+        # A bare place name ("Hønefoss") is upgraded to the dealer's street
+        # address when that address is in the same place.
+        address = (seller or {}).get("address")
+        if location and address and location.casefold() != address.casefold():
+            if address.casefold().endswith(location.casefold()):
+                location = address
+                m = _POSTAL_RE.search(address)
+                if m:
+                    attributes.setdefault("postal_code", m.group(1))
+                    attributes.setdefault("city", m.group(2).strip())
 
         # ----- dates and reference -----
         # Car ads only show "Sist oppdatert" (last changed). It is exposed as
