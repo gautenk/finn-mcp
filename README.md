@@ -14,6 +14,7 @@ online classifieds marketplace — to Claude across four verticals:
 |------|---------|
 | `search_finn` | Search a vertical by keyword + optional filters. |
 | `get_listing` | Fetch a full listing by `finnkode`. |
+| `job_locations` | Look up area names usable as `location` in job searches. |
 | `save_search` | Persist a named recurring search. |
 | `list_saved_searches` | List all saved searches. |
 | `delete_saved_search` | Remove a saved search. |
@@ -22,6 +23,11 @@ online classifieds marketplace — to Claude across four verticals:
 `search_finn` and `save_search` take `job_type` for the `jobs` vertical:
 `"fulltime"`, `"parttime"` or `"all"` (default). `check_saved_search` reuses
 the stored value.
+
+Job searches can be filtered by area with `location`, by name: a county
+(`"Vestland"`), a municipality (`"Bergen"`), an Oslo district
+(`"Grünerløkka"`) or a list of several. Names are resolved to finn.no's area
+codes; `job_locations` lists the valid ones.
 
 Search results carry what the result card shows, so a full listing fetch is
 only needed for the ad body: `location` for every vertical, plus `extra`

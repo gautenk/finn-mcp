@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..models import JobType, Listing, SearchResult, Vertical
+from ..models import Filters, JobType, Listing, SearchResult, Vertical
 from .base import FinnBackend
 
 
@@ -30,7 +30,7 @@ class OfficialApiBackend(FinnBackend):
         vertical: Vertical,
         query: str,
         page: int = 1,
-        filters: dict[str, str] | None = None,
+        filters: Filters | None = None,
         job_type: JobType = "all",
     ) -> list[SearchResult]:
         raise NotImplementedError(

@@ -6,7 +6,7 @@ from typing import Any
 
 from .. import http_client
 from ..cache import Cache
-from ..models import ALL_JOB_TYPES, ALL_VERTICALS, JobType, Listing, SearchResult, Vertical
+from ..models import Filters, ALL_JOB_TYPES, ALL_VERTICALS, JobType, Listing, SearchResult, Vertical
 from ..scraper import get_scraper
 from .base import FinnBackend, ListingNotFound
 
@@ -33,7 +33,7 @@ class ScraperBackend(FinnBackend):
         vertical: Vertical,
         query: str,
         page: int = 1,
-        filters: dict[str, str] | None = None,
+        filters: Filters | None = None,
         job_type: JobType = "all",
     ) -> list[SearchResult]:
         if vertical not in ALL_VERTICALS:

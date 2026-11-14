@@ -24,6 +24,9 @@ ALL_VERTICALS: tuple[Vertical, ...] = (
 )
 
 
+# Extra finn.no query parameters; a list repeats the parameter.
+Filters = dict[str, str | list[str]]
+
 JobType = Literal["fulltime", "parttime", "all"]
 
 ALL_JOB_TYPES: tuple[JobType, ...] = ("fulltime", "parttime", "all")
@@ -61,7 +64,7 @@ class SavedSearch(BaseModel):
     name: str
     vertical: Vertical
     query: str
-    filters: dict[str, str] = Field(default_factory=dict)
+    filters: Filters = Field(default_factory=dict)
     job_type: JobType = "all"
     last_checked_at: datetime | None = None
     last_finnkodes: list[str] = Field(default_factory=list)
